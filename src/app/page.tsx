@@ -14,7 +14,12 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 
-dayjs.locale("pt-br");
+import utc from "dayjs/plugin/utc";
+import timezone from "dayjs/plugin/timezone";
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
+dayjs.tz.setDefault("America/Sao_Paulo");
 
 function MediTrackCalendar() {
   const [currentDate, setCurrentDate] = useState(dayjs());
@@ -87,16 +92,16 @@ function MediTrackCalendar() {
 
   const toggleDay = (day: dayjs.Dayjs) => {
     const formattedDay = day.format("YYYY-MM-DD");
-    const isTaken = !takenDays.includes(formattedDay);
+    const isTaken = takenDays.includes(formattedDay);
     mutation.mutate(
-      { date: formattedDay, taken: isTaken },
+      { date: formattedDay, taken: !isTaken }, // Invertendo corretamente o estado
       {
         onSuccess: () => {
           toast({
             title: day.isSame(dayjs(), "day")
               ? "Medicação de hoje"
               : "Status da medicação",
-            description: isTaken
+            description: !isTaken // Atualize a mensagem baseada no novo estado
               ? "Marcada como tomada. Ótimo trabalho!"
               : "Marcada como não tomada. Cuide-se!",
             duration: 3000,
