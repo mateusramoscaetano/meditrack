@@ -31,10 +31,7 @@ export async function GET(request: Request) {
     });
     return NextResponse.json(logs);
   } catch (error) {
-    return NextResponse.json(
-      { error: "Failed to fetch medication logs" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error }, { status: 500 });
   }
 }
 
