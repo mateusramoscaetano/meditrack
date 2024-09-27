@@ -91,17 +91,17 @@ function MediTrackCalendar() {
   });
 
   const toggleDay = (day: dayjs.Dayjs) => {
-    const formattedDay = day.format("YYYY-MM-DD");
+    const formattedDay = day.tz("America/Sao_Paulo").format("YYYY-MM-DD");
     const isTaken = takenDays.includes(formattedDay);
     mutation.mutate(
-      { date: formattedDay, taken: !isTaken }, // Invertendo corretamente o estado
+      { date: formattedDay, taken: !isTaken },
       {
         onSuccess: () => {
           toast({
             title: day.isSame(dayjs(), "day")
               ? "Medicação de hoje"
               : "Status da medicação",
-            description: !isTaken // Atualize a mensagem baseada no novo estado
+            description: !isTaken
               ? "Marcada como tomada. Ótimo trabalho!"
               : "Marcada como não tomada. Cuide-se!",
             duration: 3000,
@@ -131,7 +131,9 @@ function MediTrackCalendar() {
   const takenDays = logs
     ? logs
         .filter((log: any) => log.taken)
-        .map((log: any) => dayjs(log.date).format("YYYY-MM-DD"))
+        .map((log: any) =>
+          dayjs.utc(log.date).tz("America/Sao_Paulo").format("YYYY-MM-DD")
+        )
     : [];
 
   return (

@@ -28,6 +28,7 @@ export async function GET(request: Request) {
           gte: dayjs(startDate).toDate(),
           lte: dayjs(endDate).toDate(),
         },
+        taken: true,
       },
     });
     return NextResponse.json(logs);
