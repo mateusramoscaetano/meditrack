@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import dayjs from "dayjs";
 import "dayjs/locale/pt-br";
 import prisma from "../../../../prisma";
+import { PrismaClientInitializationError } from "@prisma/client/runtime/library";
 
 dayjs.locale("pt-br");
 
@@ -31,7 +32,18 @@ export async function GET(request: Request) {
     });
     return NextResponse.json(logs);
   } catch (error) {
-    return NextResponse.json({ error }, { status: 500 });
+    if (error instanceof PrismaClientInitializationError) {
+      return NextResponse.json({
+        code: error.errorCode,
+        message: error.message,
+        name: error.name,
+        cause: error.cause,
+      });
+    }
+    return NextResponse.json(
+      { error: PrismaClientInitializationError },
+      { status: 500 }
+    );
   }
 }
 
