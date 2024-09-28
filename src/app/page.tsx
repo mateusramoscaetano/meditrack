@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import dayjs from "dayjs";
 import "dayjs/locale/pt-br";
 import { ChevronLeft, ChevronRight, Pill } from "lucide-react";
@@ -28,14 +28,26 @@ function MediTrackCalendar() {
   const userId = "66f6f7251e72438e25762bc2";
   const queryClient = useQueryClient();
 
-  const fetchMedicationLogs = async (date: dayjs.Dayjs) => {
+  const fetchMedicationLogs = async (
+    date: dayjs.Dayjs
+  ): Promise<
+    {
+      userId: string;
+      id: string;
+      date: Date;
+      taken: boolean;
+      createdAt: Date;
+      updatedAt: Date;
+    }[]
+  > => {
     const startDate = date.startOf("month").format("YYYY-MM-DD");
     const endDate = date.endOf("month").format("YYYY-MM-DD");
     const response = await fetch(
       `/api/medication?userId=${userId}&startDate=${startDate}&endDate=${endDate}`
     );
     if (!response.ok) throw new Error("Failed to fetch medication logs");
-    return response.json();
+
+    return await response.json();
   };
 
   const {
@@ -44,19 +56,8 @@ function MediTrackCalendar() {
     error,
   } = useQuery({
     queryKey: ["medicationLogs", currentDate.format("YYYY-MM")],
-    queryFn: () => fetchMedicationLogs(currentDate),
+    queryFn: async () => await fetchMedicationLogs(currentDate),
   });
-
-  // Prefetch next and previous month data
-  const prefetchAdjacentMonths = () => {
-    const nextMonth = currentDate.add(1, "month");
-    const prevMonth = currentDate.subtract(1, "month");
-  };
-
-  // Call prefetch on initial render and when currentDate changes
-  useEffect(() => {
-    prefetchAdjacentMonths();
-  }, [currentDate]);
 
   const updateMedicationLog = async ({
     date,
@@ -76,11 +77,62 @@ function MediTrackCalendar() {
 
   const mutation = useMutation({
     mutationFn: updateMedicationLog,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["medicationLogs"] });
+    onMutate: async (newLog) => {
+      await queryClient.cancelQueries({ queryKey: ["medicationLogs"] });
+      const previousLogs = queryClient.getQueryData<typeof logs>([
+        "medicationLogs",
+        currentDate.format("YYYY-MM"),
+      ]);
+
+      if (previousLogs) {
+        queryClient.setQueryData<typeof logs>(
+          ["medicationLogs", currentDate.format("YYYY-MM")],
+          (old) => {
+            if (!old)
+              return [
+                {
+                  ...newLog,
+                  userId, // Garante que `userId` esteja presente
+                  id: "temp",
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                },
+              ];
+
+            const existingLogIndex = old.findIndex(
+              (log) => dayjs(log.date).format("YYYY-MM-DD") === newLog.date
+            );
+            if (existingLogIndex > -1) {
+              return old.map((log, index) =>
+                index === existingLogIndex
+                  ? { ...log, taken: newLog.taken }
+                  : log
+              );
+            } else {
+              return [
+                ...old,
+                {
+                  ...newLog,
+                  userId, // Garante que `userId` esteja presente
+                  id: "temp",
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                },
+              ];
+            }
+          }
+        );
+      }
+
+      return { previousLogs };
     },
-    onError: (error) => {
-      console.error("Error updating medication log:", error);
+    onError: (err, newLog, context) => {
+      if (context?.previousLogs) {
+        queryClient.setQueryData<typeof logs>(
+          ["medicationLogs", currentDate.format("YYYY-MM")],
+          context.previousLogs
+        );
+      }
       toast({
         title: "Erro",
         description:
@@ -88,11 +140,17 @@ function MediTrackCalendar() {
         variant: "destructive",
       });
     },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["medicationLogs"] });
+    },
   });
 
   const toggleDay = (day: dayjs.Dayjs) => {
     const formattedDay = day.tz("America/Sao_Paulo").format("YYYY-MM-DD");
-    const isTaken = takenDays.includes(formattedDay);
+    const existingLog = logs?.find(
+      (log) => dayjs(log.date).format("YYYY-MM-DD") === formattedDay
+    );
+    const isTaken = existingLog ? existingLog.taken : false;
     mutation.mutate(
       { date: formattedDay, taken: !isTaken },
       {
@@ -128,13 +186,15 @@ function MediTrackCalendar() {
     (_, i) => currentDate.startOf("month").add(i, "day")
   );
 
-  const takenDays = logs
-    ? logs
-        .filter((log: any) => log.taken)
-        .map((log: any) =>
-          dayjs.utc(log.date).tz("America/Sao_Paulo").format("YYYY-MM-DD")
-        )
-    : [];
+  const isDayTaken = (day: dayjs.Dayjs) => {
+    const formattedDay = day.format("YYYY-MM-DD");
+    return (
+      logs?.some(
+        (log) =>
+          dayjs(log.date).format("YYYY-MM-DD") === formattedDay && log.taken
+      ) || false
+    );
+  };
 
   return (
     <div className="w-full h-full mx-auto p-4 bg-zinc-950 text-[#333] flex items-center justify-center flex-col space-y-10">
@@ -144,7 +204,7 @@ function MediTrackCalendar() {
           MediTrack
         </h1>
         <p className="text-sm text-[#666]">Acompanhe Sua Medicação Diária</p>
-        {isLoading && <div className=" text-white text-xs">Carregando...</div>}
+        {isLoading && <div className="text-white text-xs">Carregando...</div>}
       </header>
       <div className="bg-zinc-800 rounded-lg shadow-lg p-4">
         <div className="flex justify-between items-center mb-4">
@@ -194,16 +254,14 @@ function MediTrackCalendar() {
                 onClick={() => toggleDay(day)}
                 disabled={isLoading || isPending}
                 className={`h-8 w-8 rounded-full flex items-center justify-center text-sm transition-colors ${
-                  takenDays.includes(day.format("YYYY-MM-DD"))
+                  isDayTaken(day)
                     ? "bg-zinc-900 text-white"
-                    : "bg-muted text-[#333] hover:bg-zinc-800 hover:text-white"
+                    : " text-white hover:bg-zinc-800 hover:text-white"
                 } ${
                   isLoading || isPending ? "opacity-50 cursor-not-allowed" : ""
                 }`}
                 aria-label={`${day.format("D [de] MMMM")} - ${
-                  takenDays.includes(day.format("YYYY-MM-DD"))
-                    ? "Medicação tomada"
-                    : "Medicação não tomada"
+                  isDayTaken(day) ? "Medicação tomada" : "Medicação não tomada"
                 }`}
               >
                 {day.format("D")}
@@ -220,7 +278,7 @@ export default function Component() {
   const client = new QueryClient({
     defaultOptions: {
       queries: {
-        staleTime: 1000 * 60 * 5, // 5 minutes
+        staleTime: 1000 * 60 * 5,
       },
     },
   });
