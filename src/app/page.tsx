@@ -28,18 +28,7 @@ function MediTrackCalendar() {
   const userId = "66f6f7251e72438e25762bc2";
   const queryClient = useQueryClient();
 
-  const fetchMedicationLogs = async (
-    date: dayjs.Dayjs
-  ): Promise<
-    {
-      userId: string;
-      id: string;
-      date: Date;
-      taken: boolean;
-      createdAt: Date;
-      updatedAt: Date;
-    }[]
-  > => {
+  const fetchMedicationLogs = async (date: dayjs.Dayjs) => {
     const startDate = date.startOf("month").format("YYYY-MM-DD");
     const endDate = date.endOf("month").format("YYYY-MM-DD");
     const response = await fetch(
@@ -56,15 +45,15 @@ function MediTrackCalendar() {
     error,
   } = useQuery({
     queryKey: ["medicationLogs", currentDate.format("YYYY-MM")],
-    queryFn: async () => await fetchMedicationLogs(currentDate),
+    queryFn: () => fetchMedicationLogs(currentDate),
   });
 
   const updateMedicationLog = async ({
     date,
     taken,
   }: {
-    date: string;
-    taken: boolean;
+    date: any;
+    taken: any;
   }) => {
     const response = await fetch("/api/medication", {
       method: "POST",
@@ -77,62 +66,10 @@ function MediTrackCalendar() {
 
   const mutation = useMutation({
     mutationFn: updateMedicationLog,
-    onMutate: async (newLog) => {
-      await queryClient.cancelQueries({ queryKey: ["medicationLogs"] });
-      const previousLogs = queryClient.getQueryData<typeof logs>([
-        "medicationLogs",
-        currentDate.format("YYYY-MM"),
-      ]);
-
-      if (previousLogs) {
-        queryClient.setQueryData<typeof logs>(
-          ["medicationLogs", currentDate.format("YYYY-MM")],
-          (old) => {
-            if (!old)
-              return [
-                {
-                  ...newLog,
-                  userId, // Garante que `userId` esteja presente
-                  id: "temp",
-                  createdAt: new Date(),
-                  updatedAt: new Date(),
-                },
-              ];
-
-            const existingLogIndex = old.findIndex(
-              (log) => dayjs(log.date).format("YYYY-MM-DD") === newLog.date
-            );
-            if (existingLogIndex > -1) {
-              return old.map((log, index) =>
-                index === existingLogIndex
-                  ? { ...log, taken: newLog.taken }
-                  : log
-              );
-            } else {
-              return [
-                ...old,
-                {
-                  ...newLog,
-                  userId, // Garante que `userId` esteja presente
-                  id: "temp",
-                  createdAt: new Date(),
-                  updatedAt: new Date(),
-                },
-              ];
-            }
-          }
-        );
-      }
-
-      return { previousLogs };
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["medicationLogs"] });
     },
-    onError: (err, newLog, context) => {
-      if (context?.previousLogs) {
-        queryClient.setQueryData<typeof logs>(
-          ["medicationLogs", currentDate.format("YYYY-MM")],
-          context.previousLogs
-        );
-      }
+    onError: () => {
       toast({
         title: "Erro",
         description:
@@ -140,33 +77,25 @@ function MediTrackCalendar() {
         variant: "destructive",
       });
     },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["medicationLogs"] });
-    },
   });
 
   const toggleDay = (day: dayjs.Dayjs) => {
     const formattedDay = day.tz("America/Sao_Paulo").format("YYYY-MM-DD");
     const existingLog = logs?.find(
-      (log) => dayjs(log.date).format("YYYY-MM-DD") === formattedDay
+      (log: any) => dayjs(log.date).format("YYYY-MM-DD") === formattedDay
     );
     const isTaken = existingLog ? existingLog.taken : false;
-    mutation.mutate(
-      { date: formattedDay, taken: !isTaken },
-      {
-        onSuccess: () => {
-          toast({
-            title: day.isSame(dayjs(), "day")
-              ? "Medicação de hoje"
-              : "Status da medicação",
-            description: !isTaken
-              ? "Marcada como tomada. Ótimo trabalho!"
-              : "Marcada como não tomada. Cuide-se!",
-            duration: 3000,
-          });
-        },
-      }
-    );
+    mutation.mutate({ date: formattedDay, taken: !isTaken });
+
+    toast({
+      title: day.isSame(dayjs(), "day")
+        ? "Medicação de hoje"
+        : "Status da medicação",
+      description: !isTaken
+        ? "Marcada como tomada. Ótimo trabalho!"
+        : "Marcada como não tomada. Cuide-se!",
+      duration: 3000,
+    });
   };
 
   const goToPreviousMonth = () => {
@@ -190,7 +119,7 @@ function MediTrackCalendar() {
     const formattedDay = day.format("YYYY-MM-DD");
     return (
       logs?.some(
-        (log) =>
+        (log: any) =>
           dayjs(log.date).format("YYYY-MM-DD") === formattedDay && log.taken
       ) || false
     );
@@ -256,7 +185,7 @@ function MediTrackCalendar() {
                 className={`h-8 w-8 rounded-full flex items-center justify-center text-sm transition-colors ${
                   isDayTaken(day)
                     ? "bg-zinc-900 text-white"
-                    : " text-white hover:bg-zinc-800 hover:text-white"
+                    : "text-white hover:bg-zinc-800 hover:text-white"
                 } ${
                   isLoading || isPending ? "opacity-50 cursor-not-allowed" : ""
                 }`}
